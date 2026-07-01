@@ -10,6 +10,7 @@ export interface Project {
   name: string;
   description: string;
   progress: number; // Percentage 0-100
+  memberIds?: string[];
 }
 
 export interface Comment {

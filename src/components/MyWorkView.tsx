@@ -36,6 +36,7 @@ export default function MyWorkView({
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterProject, setFilterProject] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
 
   // Filter tasks assigned to the CURRENT USER
   const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
@@ -449,14 +450,26 @@ export default function MyWorkView({
                       {/* Delete Quick action */}
                       <button
                         onClick={() => {
-                          if (confirm('Are you sure you want to remove this task from the workspace?')) {
+                          if (confirmDeleteTaskId === task.id) {
                             onDeleteTask(task.id);
+                            setConfirmDeleteTaskId(null);
+                          } else {
+                            setConfirmDeleteTaskId(task.id);
+                            setTimeout(() => setConfirmDeleteTaskId(null), 4000);
                           }
                         }}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/25 dark:hover:text-red-400"
-                        title="Delete task from pipeline"
+                        className={`rounded-lg p-1.5 transition-colors cursor-pointer flex items-center justify-center ${
+                          confirmDeleteTaskId === task.id
+                            ? 'bg-red-600 text-white hover:bg-red-700 font-bold text-[9px] px-2 py-1'
+                            : 'text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/25 dark:hover:text-red-400'
+                        }`}
+                        title={confirmDeleteTaskId === task.id ? "Click again to confirm delete" : "Delete task from pipeline"}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        {confirmDeleteTaskId === task.id ? (
+                          <span>Confirm?</span>
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
                       </button>
                     </div>
                   </div>

@@ -11,7 +11,10 @@ import {
   CheckCircle, 
   Sliders, 
   Sparkles, 
-  AlertCircle 
+  AlertCircle,
+  Users,
+  UserPlus,
+  Plus
 } from 'lucide-react';
 
 interface ListViewProps {
@@ -25,6 +28,9 @@ interface ListViewProps {
   setSelectedProjectId: (id: string) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  onDeleteProject?: (projectId: string) => void;
+  onUpdateProjectMembers?: (projectId: string, memberIds: string[]) => void;
+  onAddTeamMember?: (name: string, role: string) => User;
 }
 
 type SortField = 'title' | 'project' | 'status' | 'priority' | 'dueDate';
@@ -41,11 +47,58 @@ export default function ListView({
   setSelectedProjectId,
   searchQuery,
   setSearchQuery,
+  onDeleteProject,
+  onUpdateProjectMembers,
+  onAddTeamMember,
 }: ListViewProps) {
   // Filters
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterAssignee, setFilterAssignee] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
+
+  // Manage Project Members States
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState('');
+  const [memberError, setMemberError] = useState('');
+
+  const currentProject = projects.find(p => p.id === selectedProjectId);
+
+  const selectedProjTasks = currentProject ? tasks.filter(t => t.projectId === currentProject.id) : [];
+  const defaultSelectedUserIds = Array.from(new Set(selectedProjTasks.map(t => t.assigneeId)));
+  const currentProjMemberIds = currentProject ? (currentProject.memberIds || defaultSelectedUserIds) : [];
+
+  const handleToggleMember = (userId: string) => {
+    if (!currentProject || !onUpdateProjectMembers) return;
+    const isMember = currentProjMemberIds.includes(userId);
+    let newMemberIds: string[];
+    if (isMember) {
+      newMemberIds = currentProjMemberIds.filter(id => id !== userId);
+    } else {
+      newMemberIds = [...currentProjMemberIds, userId];
+    }
+    onUpdateProjectMembers(currentProject.id, newMemberIds);
+  };
+
+  const handleCreateAndAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim()) {
+      setMemberError('Name is required.');
+      return;
+    }
+    if (!currentProject || !onAddTeamMember || !onUpdateProjectMembers) return;
+
+    // Create team member and add to project
+    const newMember = onAddTeamMember(newMemberName.trim(), newMemberRole.trim() || 'Contributor');
+    const newMemberIds = [...currentProjMemberIds, newMember.id];
+    onUpdateProjectMembers(currentProject.id, newMemberIds);
+
+    setNewMemberName('');
+    setNewMemberRole('');
+    setMemberError('');
+  };
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('dueDate');
@@ -223,16 +276,56 @@ export default function ListView({
             <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
               Project
             </label>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none dark:bg-slate-800 dark:border-slate-700 dark:text-gray-300"
-            >
-              <option value="all">All Projects</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <div className="flex gap-1.5">
+              <select
+                value={selectedProjectId}
+                onChange={(e) => {
+                  setSelectedProjectId(e.target.value);
+                  setConfirmDeleteProject(false);
+                }}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none dark:bg-slate-800 dark:border-slate-700 dark:text-gray-300"
+              >
+                <option value="all">All Projects</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {selectedProjectId !== 'all' && onUpdateProjectMembers && (
+                <button
+                  onClick={() => setIsMembersModalOpen(true)}
+                  className="rounded-lg border border-blue-200 bg-blue-50 p-1.5 text-blue-600 hover:bg-blue-100 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-400 transition-colors cursor-pointer shrink-0 flex items-center gap-1 text-xs font-semibold"
+                  title="Manage Project Members"
+                >
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">Members</span>
+                </button>
+              )}
+              {selectedProjectId !== 'all' && onDeleteProject && (
+                <button
+                  onClick={() => {
+                    if (confirmDeleteProject) {
+                      onDeleteProject(selectedProjectId);
+                      setConfirmDeleteProject(false);
+                    } else {
+                      setConfirmDeleteProject(true);
+                      setTimeout(() => setConfirmDeleteProject(false), 4000);
+                    }
+                  }}
+                  className={`rounded-lg border p-1.5 transition-colors cursor-pointer shrink-0 flex items-center justify-center ${
+                    confirmDeleteProject
+                      ? 'border-red-500 bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                      : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-400'
+                  }`}
+                  title={confirmDeleteProject ? "Click again to confirm delete" : "Delete Selected Project"}
+                >
+                  {confirmDeleteProject ? (
+                    <span className="text-[10px] font-bold px-1 text-white">Confirm?</span>
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Status Filter */}
@@ -504,13 +597,21 @@ export default function ListView({
                           </button>
                           <button
                             onClick={() => {
-                              if (window.confirm('Are you sure you want to delete this task?')) {
+                              if (confirmDeleteTaskId === task.id) {
                                 onDeleteTask(task.id);
+                                setConfirmDeleteTaskId(null);
+                              } else {
+                                setConfirmDeleteTaskId(task.id);
+                                setTimeout(() => setConfirmDeleteTaskId(null), 4000);
                               }
                             }}
-                            className="text-xs font-bold text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                            className={`text-xs font-bold transition-colors ${
+                              confirmDeleteTaskId === task.id
+                                ? 'text-red-600 dark:text-red-400 underline animate-pulse'
+                                : 'text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300'
+                            }`}
                           >
-                            Delete
+                            {confirmDeleteTaskId === task.id ? 'Confirm?' : 'Delete'}
                           </button>
                         </div>
                       </td>
@@ -522,6 +623,153 @@ export default function ListView({
           </table>
         </div>
       </div>
+
+      {/* Manage Project Members Modal */}
+      {isMembersModalOpen && currentProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-gray-900/45 backdrop-blur-xs transition-opacity"
+            onClick={() => {
+              setIsMembersModalOpen(false);
+              setNewMemberName('');
+              setNewMemberRole('');
+              setMemberError('');
+            }}
+          />
+
+          {/* Modal Container */}
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh] text-left">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Manage Project Members</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Select team members to join <span className="font-semibold text-blue-600 dark:text-blue-400">"{currentProject.name}"</span>.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsMembersModalOpen(false);
+                  setNewMemberName('');
+                  setNewMemberRole('');
+                  setMemberError('');
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Members List section */}
+            <div className="mt-4 flex-1 overflow-y-auto pr-1 max-h-[300px] border border-gray-100 dark:border-slate-800 rounded-xl p-3 bg-gray-55/30 dark:bg-slate-950/20">
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">
+                Team Members ({teamMembers.length})
+              </label>
+              <div className="flex flex-col gap-2">
+                {teamMembers.map((member) => {
+                  const isChecked = currentProjMemberIds.includes(member.id);
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => handleToggleMember(member.id)}
+                      className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                        isChecked 
+                          ? 'border-blue-150 bg-blue-50/30 dark:border-blue-900/40 dark:bg-blue-950/10' 
+                          : 'border-transparent bg-white hover:bg-gray-50 dark:bg-slate-900 dark:hover:bg-slate-800/55'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={member.avatar}
+                          alt={member.name}
+                          className="h-8 w-8 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name)}`;
+                          }}
+                        />
+                        <div>
+                          <h4 className="text-xs font-semibold text-gray-800 dark:text-gray-200">{member.name}</h4>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">{member.role || 'Member'}</p>
+                        </div>
+                      </div>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-colors ${
+                        isChecked
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'border-gray-300 dark:border-slate-700'
+                      }`}>
+                        {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Add Team Member Section */}
+            {onAddTeamMember && (
+              <div className="mt-5 pt-4 border-t border-gray-150 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="h-4 w-4 text-blue-500" />
+                  <h4 className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Create & Register New Team Member</h4>
+                </div>
+                <form onSubmit={handleCreateAndAddMember} className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Full Name (e.g. John Doe)"
+                        value={newMemberName}
+                        onChange={(e) => {
+                          setNewMemberName(e.target.value);
+                          if (e.target.value.trim()) setMemberError('');
+                        }}
+                        className={`w-full rounded-lg border px-3 py-1.5 text-xs outline-none transition-all dark:bg-slate-800 dark:text-gray-100 ${
+                          memberError ? 'border-red-500' : 'border-gray-200 dark:border-slate-700 focus:border-blue-500'
+                        }`}
+                      />
+                      {memberError && (
+                        <p className="mt-1 text-[10px] text-red-500 font-semibold">{memberError}</p>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Role (e.g. Developer, Designer)"
+                        value={newMemberRole}
+                        onChange={(e) => setNewMemberRole(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs outline-none transition-all dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full rounded-lg bg-blue-600 py-1.5 text-xs font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create Member and Add to Project
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <div className="mt-5 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMembersModalOpen(false);
+                  setNewMemberName('');
+                  setNewMemberRole('');
+                  setMemberError('');
+                }}
+                className="rounded-lg bg-gray-100 hover:bg-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-300 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

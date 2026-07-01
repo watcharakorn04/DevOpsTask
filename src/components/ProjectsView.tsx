@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, Task, User } from '../types';
-import { Search, Plus, Calendar, CheckSquare, Layers, Users, Sparkles, FolderKanban, Trash2 } from 'lucide-react';
+import { Search, Plus, Calendar, CheckSquare, Layers, Users, Sparkles, FolderKanban, Trash2, Check, X, UserPlus } from 'lucide-react';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -9,6 +9,8 @@ interface ProjectsViewProps {
   onAddProject: (name: string, description: string) => void;
   onSelectProject: (projectId: string, view: 'board' | 'list') => void;
   onDeleteProject?: (projectId: string) => void;
+  onUpdateProjectMembers?: (projectId: string, memberIds: string[]) => void;
+  onAddTeamMember?: (name: string, role: string) => User;
 }
 
 export default function ProjectsView({
@@ -18,6 +20,8 @@ export default function ProjectsView({
   onAddProject,
   onSelectProject,
   onDeleteProject,
+  onUpdateProjectMembers,
+  onAddTeamMember,
 }: ProjectsViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'high' | 'low' | 'empty'>('all');
@@ -28,6 +32,57 @@ export default function ProjectsView({
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [errorName, setErrorName] = useState('');
   const [errorDesc, setErrorDesc] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Manage Project Members States
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [selectedProjectForMembers, setSelectedProjectForMembers] = useState<Project | null>(null);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState('');
+  const [memberError, setMemberError] = useState('');
+
+  // Manage Project Members Helpers
+  const selectedProjTasks = selectedProjectForMembers ? tasks.filter(t => t.projectId === selectedProjectForMembers.id) : [];
+  const defaultSelectedUserIds = Array.from(new Set(selectedProjTasks.map(t => t.assigneeId)));
+  const currentProjMemberIds = selectedProjectForMembers ? (selectedProjectForMembers.memberIds || defaultSelectedUserIds) : [];
+
+  const handleToggleMember = (userId: string) => {
+    if (!selectedProjectForMembers || !onUpdateProjectMembers) return;
+    const isMember = currentProjMemberIds.includes(userId);
+    let newMemberIds: string[];
+    if (isMember) {
+      newMemberIds = currentProjMemberIds.filter(id => id !== userId);
+    } else {
+      newMemberIds = [...currentProjMemberIds, userId];
+    }
+    onUpdateProjectMembers(selectedProjectForMembers.id, newMemberIds);
+    setSelectedProjectForMembers({
+      ...selectedProjectForMembers,
+      memberIds: newMemberIds
+    });
+  };
+
+  const handleCreateAndAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim()) {
+      setMemberError('Name is required.');
+      return;
+    }
+    if (!selectedProjectForMembers || !onAddTeamMember || !onUpdateProjectMembers) return;
+
+    // Create team member and add to project
+    const newMember = onAddTeamMember(newMemberName.trim(), newMemberRole.trim() || 'Contributor');
+    const newMemberIds = [...currentProjMemberIds, newMember.id];
+    onUpdateProjectMembers(selectedProjectForMembers.id, newMemberIds);
+    setSelectedProjectForMembers({
+      ...selectedProjectForMembers,
+      memberIds: newMemberIds
+    });
+
+    setNewMemberName('');
+    setNewMemberRole('');
+    setMemberError('');
+  };
 
   // Project Client Validation
   const handleCreateProject = (e: React.FormEvent) => {
@@ -150,9 +205,10 @@ export default function ProjectsView({
             const inProgressCount = projectTasks.filter(t => t.status === 'In Progress').length;
             const calcProgress = projectTasks.length > 0 ? Math.round((doneTasks / projectTasks.length) * 100) : 0;
 
-            // Extract unique members assigned to tasks in this project
-            const assignedUserIds = Array.from(new Set(projectTasks.map(t => t.assigneeId)));
-            const assignedUsers = teamMembers.filter(m => assignedUserIds.includes(m.id));
+            // Extract unique members assigned to tasks in this project OR explicitly added as project.memberIds
+            const defaultUserIds = Array.from(new Set(projectTasks.map(t => t.assigneeId)));
+            const currentMemberIds = project.memberIds || defaultUserIds;
+            const projectMembers = teamMembers.filter(m => currentMemberIds.includes(m.id));
 
             return (
               <div 
@@ -185,27 +241,42 @@ export default function ProjectsView({
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Users className="h-4 w-4 text-gray-400" />
-                      <span>{assignedUsers.length === 0 ? 'No members' : `${assignedUsers.length} active`}</span>
+                      <span>{projectMembers.length === 0 ? 'No members' : `${projectMembers.length} ${projectMembers.length === 1 ? 'member' : 'members'}`}</span>
                     </div>
                   </div>
 
-                  {/* Overlapping member avatars */}
-                  {assignedUsers.length > 0 && (
-                    <div className="mt-3 flex items-center -space-x-2 overflow-hidden">
-                      {assignedUsers.map((user) => (
+                  {/* Overlapping member avatars with Manage button */}
+                  <div className="mt-4 flex items-center justify-between border-t border-gray-100 dark:border-slate-800/60 pt-3.5">
+                    <div className="flex items-center -space-x-2 overflow-hidden">
+                      {projectMembers.map((user) => (
                         <img
                           key={user.id}
                           className="inline-block h-6.5 w-6.5 rounded-full object-cover ring-2 ring-white dark:ring-slate-900"
                           src={user.avatar}
                           alt={user.name}
-                          title={user.name}
+                          title={`${user.name} (${user.role || 'Member'})`}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`;
                           }}
                         />
                       ))}
+                      {projectMembers.length === 0 && (
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">No members assigned</span>
+                      )}
                     </div>
-                  )}
+                    {onUpdateProjectMembers && (
+                      <button
+                        onClick={() => {
+                          setSelectedProjectForMembers(project);
+                          setIsMembersModalOpen(true);
+                        }}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg bg-blue-50/50 hover:bg-blue-50 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 transition-colors"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Members
+                      </button>
+                    )}
+                  </div>
 
                   {/* Progress Indicators */}
                   <div className="mt-5">
@@ -239,14 +310,26 @@ export default function ProjectsView({
                   {onDeleteProject && (
                     <button
                       onClick={() => {
-                        if (confirm(`Are you sure you want to delete project "${project.name}"? This will also permanently delete all tasks under this project.`)) {
+                        if (confirmDeleteId === project.id) {
                           onDeleteProject(project.id);
+                          setConfirmDeleteId(null);
+                        } else {
+                          setConfirmDeleteId(project.id);
+                          setTimeout(() => setConfirmDeleteId(null), 4000);
                         }
                       }}
-                      className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-400 transition-colors cursor-pointer"
-                      title="Delete Project"
+                      className={`rounded-lg border p-1.5 transition-colors cursor-pointer shrink-0 flex items-center justify-center ${
+                        confirmDeleteId === project.id
+                          ? 'border-red-500 bg-red-600 text-white hover:bg-red-700 animate-pulse'
+                          : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-400'
+                      }`}
+                      title={confirmDeleteId === project.id ? "Click again to confirm delete" : "Delete Project"}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {confirmDeleteId === project.id ? (
+                        <span className="text-[10px] font-bold px-1 text-white">Confirm?</span>
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
                     </button>
                   )}
                 </div>
@@ -343,6 +426,156 @@ export default function ProjectsView({
                 </button>
               </div>
             </form>
+          </div>
+         </div>
+       )}
+
+      {/* Manage Project Members Modal */}
+      {isMembersModalOpen && selectedProjectForMembers && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-gray-900/45 backdrop-blur-xs transition-opacity"
+            onClick={() => {
+              setIsMembersModalOpen(false);
+              setSelectedProjectForMembers(null);
+              setNewMemberName('');
+              setNewMemberRole('');
+              setMemberError('');
+            }}
+          />
+
+          {/* Modal Container */}
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh]">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Manage Project Members</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Select team members to join <span className="font-semibold text-blue-600 dark:text-blue-400">"{selectedProjectForMembers.name}"</span>.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsMembersModalOpen(false);
+                  setSelectedProjectForMembers(null);
+                  setNewMemberName('');
+                  setNewMemberRole('');
+                  setMemberError('');
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Members List section */}
+            <div className="mt-4 flex-1 overflow-y-auto pr-1 max-h-[300px] border border-gray-100 dark:border-slate-800 rounded-xl p-3 bg-gray-55/30 dark:bg-slate-950/20">
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">
+                Team Members ({teamMembers.length})
+              </label>
+              <div className="flex flex-col gap-2">
+                {teamMembers.map((member) => {
+                  const isChecked = currentProjMemberIds.includes(member.id);
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => handleToggleMember(member.id)}
+                      className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                        isChecked 
+                          ? 'border-blue-150 bg-blue-50/30 dark:border-blue-900/40 dark:bg-blue-950/10' 
+                          : 'border-transparent bg-white hover:bg-gray-50 dark:bg-slate-900 dark:hover:bg-slate-800/55'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={member.avatar}
+                          alt={member.name}
+                          className="h-8 w-8 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(member.name)}`;
+                          }}
+                        />
+                        <div>
+                          <h4 className="text-xs font-semibold text-gray-800 dark:text-gray-200">{member.name}</h4>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">{member.role || 'Member'}</p>
+                        </div>
+                      </div>
+                      <div className={`h-5 w-5 rounded-md border flex items-center justify-center transition-colors ${
+                        isChecked
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'border-gray-300 dark:border-slate-700'
+                      }`}>
+                        {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Add Team Member Section */}
+            {onAddTeamMember && (
+              <div className="mt-5 pt-4 border-t border-gray-150 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="h-4 w-4 text-blue-500" />
+                  <h4 className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase">Create & Register New Team Member</h4>
+                </div>
+                <form onSubmit={handleCreateAndAddMember} className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Full Name (e.g. John Doe)"
+                        value={newMemberName}
+                        onChange={(e) => {
+                          setNewMemberName(e.target.value);
+                          if (e.target.value.trim()) setMemberError('');
+                        }}
+                        className={`w-full rounded-lg border px-3 py-1.5 text-xs outline-none transition-all dark:bg-slate-800 dark:text-gray-100 ${
+                          memberError ? 'border-red-500' : 'border-gray-200 dark:border-slate-700 focus:border-blue-500'
+                        }`}
+                      />
+                      {memberError && (
+                        <p className="mt-1 text-[10px] text-red-500 font-semibold">{memberError}</p>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Role (e.g. Developer, Designer)"
+                        value={newMemberRole}
+                        onChange={(e) => setNewMemberRole(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs outline-none transition-all dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full rounded-lg bg-blue-600 py-1.5 text-xs font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create Member and Add to Project
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <div className="mt-5 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMembersModalOpen(false);
+                  setSelectedProjectForMembers(null);
+                  setNewMemberName('');
+                  setNewMemberRole('');
+                  setMemberError('');
+                }}
+                className="rounded-lg bg-gray-100 hover:bg-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-300 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

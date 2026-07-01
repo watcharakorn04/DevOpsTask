@@ -163,6 +163,28 @@ export default function App() {
     showToast(`Project "${projName}" and all its tasks were deleted.`, 'info');
   };
 
+  const handleUpdateProjectMembers = (projectId: string, memberIds: string[]) => {
+    setProjects(prev => prev.map(p => {
+      if (p.id === projectId) {
+        return { ...p, memberIds };
+      }
+      return p;
+    }));
+    showToast('Project members updated successfully.', 'success');
+  };
+
+  const handleAddTeamMember = (name: string, role: string) => {
+    const newMember: User = {
+      id: `u_${Date.now()}`,
+      name,
+      role,
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+    };
+    setTeamMembers(prev => [...prev, newMember]);
+    showToast(`Team member "${name}" was successfully registered.`, 'success');
+    return newMember;
+  };
+
   const handleSaveTask = (taskData: Omit<Task, 'comments'>) => {
     const existingIndex = tasks.findIndex(t => t.id === taskData.id);
     
@@ -273,6 +295,8 @@ export default function App() {
             onAddProject={handleAddProject}
             onSelectProject={handleSelectProjectAndRoute}
             onDeleteProject={handleDeleteProject}
+            onUpdateProjectMembers={handleUpdateProjectMembers}
+            onAddTeamMember={handleAddTeamMember}
           />
         );
       case 'mywork':
@@ -299,6 +323,9 @@ export default function App() {
             setSelectedProjectId={setSelectedProjectId}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            onDeleteProject={handleDeleteProject}
+            onUpdateProjectMembers={handleUpdateProjectMembers}
+            onAddTeamMember={handleAddTeamMember}
           />
         );
       case 'list':
@@ -314,6 +341,9 @@ export default function App() {
             setSelectedProjectId={setSelectedProjectId}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            onDeleteProject={handleDeleteProject}
+            onUpdateProjectMembers={handleUpdateProjectMembers}
+            onAddTeamMember={handleAddTeamMember}
           />
         );
       case 'settings':
