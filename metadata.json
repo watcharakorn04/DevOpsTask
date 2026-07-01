@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow",
+  "description": "A modern team task management web application that helps teams organize projects, manage tasks, and collaborate visually through Kanban boards and list views.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
